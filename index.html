@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bench Plan – Furniture Designer</title>
+<style>
+:root{--bg:#eef0ea;--card:#fbfbf8;--ink:#1c2620;--mute:#5d6b62;--line:#cfd5c9;--acc:#2d5f8b;--acc-ink:#fff;--stage:#dfe4da;--on:#e3ecf5;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#151b17;--card:#1d2520;--ink:#e8ede6;--mute:#93a198;--line:#33403a;--acc:#6fa8dc;--acc-ink:#0e1a24;--stage:#222c26;--on:#263646}}
+:root[data-theme="dark"]{--bg:#151b17;--card:#1d2520;--ink:#e8ede6;--mute:#93a198;--line:#33403a;--acc:#6fa8dc;--acc-ink:#0e1a24;--stage:#222c26;--on:#263646}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{max-width:1100px;margin:0 auto;padding:16px}
+h1{font:700 26px/1.15 Georgia,"Times New Roman",serif;margin:0 0 4px}
+p.sub{margin:0 0 14px;color:var(--mute)}
+.grid{display:grid;gap:14px;grid-template-columns:1fr}
+@media(min-width:860px){.grid{grid-template-columns:1.2fr 1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
+#stage{height:min(50vh,420px);background:var(--stage);border-radius:8px;position:relative;touch-action:none;overflow:hidden}
+#stage canvas{display:block;width:100%;height:100%}
+.hint{position:absolute;left:10px;bottom:8px;font-size:12px;color:var(--mute);pointer-events:none}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+label{font-size:13px;color:var(--mute);display:flex;flex-direction:column;gap:2px}
+select,input{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:7px 8px;min-width:0;width:100%}
+input[type=color]{padding:2px;height:38px}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:6px;padding:7px 11px}
+button.p{background:var(--acc);color:var(--acc-ink);border-color:var(--acc)}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.chip{padding:5px 9px;font-size:13px;border-radius:14px;width:auto}
+.chip[aria-pressed=true]{background:var(--acc);color:var(--acc-ink);border-color:var(--acc)}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:10px}
+.dims{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:6px}
+h2{font:600 16px/1.2 Georgia,serif;margin:0 0 8px}
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:5px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+tr[data-i]{cursor:pointer}tr.on{background:var(--on)}
+td input{width:90px;padding:4px 6px}
+.tot{display:flex;justify-content:space-between;padding:4px 0;font-variant-numeric:tabular-nums}
+.big{font:700 24px Georgia,serif;color:var(--acc)}
+.note{font-size:12px;color:var(--mute);margin:4px 0}
+.sw{display:inline-block;width:11px;height:11px;border-radius:3px;border:1px solid var(--line);margin-right:6px;vertical-align:-1px}
+</style></head>
+<body><div class="wrap">
+<h1>Bench Plan</h1>
+<p class="sub">Build a piece from any shapes, join them together, colour them, and price each one.</p>
+<div class="grid">
+ <div>
+  <div class="card"><div id="stage"><span class="hint">Tap a piece to select. Drag to rotate, pinch or scroll to zoom.</span></div></div>
+  <div class="card" style="margin-top:14px">
+   <h2>Cut list and prices</h2>
+   <div class="tw"><table id="cut"></table></div>
+   <div class="row" style="margin-top:10px"><label style="flex:1">Other costs (finish, hardware, labour)<input type="number" id="oth" min="0" step="0.01" placeholder="0.00"></label></div>
+   <div id="sum"></div>
+  </div>
+ </div>
+ <div>
+  <div class="card">
+   <div class="row"><label style="flex:1">Start from<select id="preset"><option value="table">Dining table</option><option value="shelf">Bookshelf</option><option value="stool">Round stool</option><option value="blank">Blank</option></select></label></div>
+   <h2>Pieces</h2>
+   <div class="chips" id="chips"></div>
+   <div class="row"><select id="newshape" style="flex:1"></select><button class="p" id="add">Add piece</button><button id="dup">Duplicate</button><button id="del">Delete</button></div>
+   <div id="form"></div>
+   <p class="note">Sizes are in inches. Position is the bottom centre of a piece, from the middle of the floor. Moving a piece also moves everything joined to it.</p>
+  </div>
+ </div>
+</div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const f=v=>(+(+v).toFixed(2)).toString();
+const T=THREE;
+const SH={
+ Box:()=>new T.BoxGeometry(1,1,1),
+ Cylinder:()=>new T.CylinderGeometry(.5,.5,1,32),
+ Sphere:()=>new T.SphereGeometry(.5,28,18),
+ Cone:()=>new T.ConeGeometry(.5,1,32),
+ Pyramid:()=>{const g=new T.ConeGeometry(.5*Math.SQRT2,1,4);g.rotateY(Math.PI/4);return g},
+ Prism:()=>new T.CylinderGeometry(.58,.58,1,3),
+ Hexagon:()=>new T.CylinderGeometry(.5,.5,1,6),
+ Dome:()=>{const g=new T.SphereGeometry(.5,28,12,0,Math.PI*2,0,Math.PI/2);g.translate(0,-.25,0);g.scale(1,2,1);return g},
+ Torus:()=>{const g=new T.TorusGeometry(.35,.15,14,36);g.rotateX(Math.PI/2);g.scale(1,1/.3,1);return g}
+};
+const FACES=[['Top',1,1],['Bottom',1,-1],['Right side',0,1],['Left side',0,-1],['Front',2,1],['Back',2,-1]];
+const JOINTS=['Glue','Screws','Dowels','Mortise and tenon','Nails','Bolts'];
+$('newshape').innerHTML=Object.keys(SH).map(s=>`<option>${s}</option>`).join('');
+let uid=1,parts=[],sel=0,meshes=[];
+const mk=(n,shape,w,h,d,x,y,z,color)=>({id:uid++,n,shape,w,h,d,x,y,z,rx:0,ry:0,rz:0,color:color||'#c9a36b',price:0,parent:null,joint:'Glue'});
+const link=a=>{a.slice(1).forEach(p=>p.parent=a[0].id);return a};
+const OAK='#c9a36b',WAL='#6b4a33',PINE='#e0c68e',CHE='#a8603c';
+const PRESETS={
+ table:()=>{const o=[mk('Top','Box',60,1.25,30,0,28.75,0,WAL)];[[-27,-12],[27,-12],[-27,12],[27,12]].forEach((p,i)=>o.push(mk('Leg '+(i+1),'Box',2.5,28.75,2.5,p[0],0,p[1],OAK)));
+  o.push(mk('Apron front','Box',48,4,.75,0,24.5,-12.6,OAK),mk('Apron back','Box',48,4,.75,0,24.5,12.6,OAK),mk('Apron left','Box',23,4,.75,-27.6,24.5,0,OAK),mk('Apron right','Box',23,4,.75,27.6,24.5,0,OAK));return link(o)},
+ shelf:()=>{const o=[mk('Side left','Box',.75,60,11,-15.1,0,0,PINE),mk('Side right','Box',.75,60,11,15.1,0,0,PINE)];[0,19,38,59.25].forEach((y,i)=>o.push(mk('Shelf '+(i+1),'Box',29.5,.75,11,0,y,0,PINE)));o.push(mk('Back panel','Box',29.5,58,.25,0,1,-5.4,'#c9b48a'));return link(o)},
+ stool:()=>{const o=[mk('Seat','Cylinder',15,1.5,15,0,23.5,0,CHE)];[[-4.5,-4.5],[4.5,-4.5],[-4.5,4.5],[4.5,4.5]].forEach((p,i)=>o.push(mk('Leg '+(i+1),'Cylinder',1.75,23.5,1.75,p[0],0,p[1],OAK)));o.push(mk('Foot ring','Torus',11,.75,11,0,8,0,WAL));return link(o)},
+ blank:()=>[mk('Piece 1','Box',24,.75,12,0,0,0)]
+};
+parts=PRESETS.table();
+
+// ---- 3D ----
+const stage=$('stage');
+const R=new T.WebGLRenderer({antialias:true,alpha:true});R.setPixelRatio(Math.min(devicePixelRatio,2));stage.appendChild(R.domElement);
+const S=new T.Scene(),cam=new T.PerspectiveCamera(40,1,1,1500);
+S.add(new T.AmbientLight(0xffffff,.65));const dl=new T.DirectionalLight(0xffffff,.8);dl.position.set(60,90,50);S.add(dl);
+S.add(new T.GridHelper(200,40,0x88988c,0xaab4a8));
+const G=new T.Group();S.add(G);
+let az=.7,el=.45,dist=120,tgt=new T.Vector3(0,15,0);
+function place(){cam.position.set(tgt.x+dist*Math.cos(el)*Math.sin(az),tgt.y+dist*Math.sin(el),tgt.z+dist*Math.cos(el)*Math.cos(az));cam.lookAt(tgt);R.render(S,cam)}
+function fit(){const b=new T.Box3().setFromObject(G);if(b.isEmpty())return;const s=b.getSize(new T.Vector3());tgt.copy(b.getCenter(new T.Vector3()));dist=Math.max(s.x,s.y,s.z)*2.1+10}
+function build(){
+ while(G.children.length){const m=G.children.pop();m.geometry.dispose()}
+ meshes=parts.map((p,i)=>{const g=SH[p.shape]();
+  const m=new T.Mesh(g,new T.MeshLambertMaterial({color:p.color,emissive:i===sel?0x1c3a5c:0x000000}));
+  m.scale.set(p.w,p.h,p.d);m.position.set(p.x,p.y+p.h/2,p.z);
+  m.rotation.set(p.rx*Math.PI/180,p.ry*Math.PI/180,p.rz*Math.PI/180);
+  m.add(new T.LineSegments(new T.EdgesGeometry(g,25),new T.LineBasicMaterial({color:i===sel?0x4da3ff:0x2a1d12})));
+  m.userData.i=i;G.add(m);return m});
+ place()}
+function size(){const r=stage.getBoundingClientRect();R.setSize(r.width,r.height);cam.aspect=r.width/r.height;cam.updateProjectionMatrix();place()}
+addEventListener('resize',size);
+const ptr=new Map(),rc=new T.Raycaster();let last=0,moved=0;
+const pd=()=>{const a=[...ptr.values()];return Math.hypot(a[0][0]-a[1][0],a[0][1]-a[1][1])||1};
+stage.addEventListener('pointerdown',e=>{stage.setPointerCapture(e.pointerId);ptr.set(e.pointerId,[e.clientX,e.clientY]);moved=0;if(ptr.size==2)last=pd()});
+stage.addEventListener('pointermove',e=>{if(!ptr.has(e.pointerId))return;const o=ptr.get(e.pointerId);
+ if(ptr.size==1){moved+=Math.abs(e.clientX-o[0])+Math.abs(e.clientY-o[1]);az-=(e.clientX-o[0])*.008;el=Math.max(.05,Math.min(1.5,el+(e.clientY-o[1])*.008))}
+ ptr.set(e.pointerId,[e.clientX,e.clientY]);
+ if(ptr.size==2){const d=pd();dist=Math.max(15,Math.min(600,dist*last/d));last=d}place()});
+stage.addEventListener('pointerup',e=>{if(ptr.size===1&&moved<6){const r=stage.getBoundingClientRect();
+  rc.setFromCamera(new T.Vector2((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1),cam);
+  const h=rc.intersectObjects(G.children)[0];if(h){sel=h.object.userData.i;ui()}}ptr.delete(e.pointerId)});
+stage.addEventListener('pointercancel',e=>ptr.delete(e.pointerId));
+stage.addEventListener('wheel',e=>{e.preventDefault();dist=Math.max(15,Math.min(600,dist*(1+e.deltaY*.001)));place()},{passive:false});
+
+// ---- joining ----
+const desc=p=>{const o=[];parts.forEach(q=>{if(q.parent===p.id){o.push(q,...desc(q))}});return o};
+const moveBy=(p,dx,dy,dz)=>[p,...desc(p)].forEach(q=>{q.x+=dx;q.y+=dy;q.z+=dz});
+const box=p=>new T.Box3().setFromObject(meshes[parts.indexOf(p)]);
+function joinTo(p,t,face,joint){
+ if(desc(p).includes(t)){$('jst').textContent='A piece can’t join to one that is attached to it.';return}
+ const A=box(p),B=box(t),ax=FACES[face][1],sg=FACES[face][2],k=['x','y','z'],d=[0,0,0];
+ for(let i=0;i<3;i++)d[i]=i===ax?(sg>0?B.max[k[i]]-A.min[k[i]]:B.min[k[i]]-A.max[k[i]]):(B.min[k[i]]+B.max[k[i]])/2-(A.min[k[i]]+A.max[k[i]])/2;
+ moveBy(p,d[0],d[1],d[2]);p.parent=t.id;p.joint=joint;ui()}
+
+// ---- UI ----
+function chips(){const c=$('chips');c.innerHTML='';parts.forEach((p,i)=>{const b=document.createElement('button');b.className='chip';b.innerHTML=`<span class="sw" style="background:${p.color}"></span>${esc(p.n)}${p.parent?' 🔗':''}`;b.setAttribute('aria-pressed',i===sel);b.onclick=()=>{sel=i;ui()};c.appendChild(b)})}
+const FIELDS=[['w','Width'],['h','Height'],['d','Depth'],['x','Pos X'],['y','Pos Y'],['z','Pos Z'],['rx','Tilt X °'],['ry','Turn Y °'],['rz','Tilt Z °']];
+function form(){const p=parts[sel],el=$('form');if(!p){el.innerHTML='<p class="note">No pieces yet. Add one to start.</p>';return}
+ const o=parts.filter(q=>q!==p),par=parts.find(q=>q.id===p.parent);
+ el.innerHTML=`<div class="two"><label>Name<input id="nm"></label><label>Shape<select id="shp">${Object.keys(SH).map(s=>`<option>${s}</option>`).join('')}</select></label><label>Colour<input type="color" id="col"></label></div>
+ <div class="dims" id="dims"></div>
+ <h2 style="margin-top:12px">Join this piece</h2>
+ <div class="two"><label>Attach to<select id="jt">${o.map(q=>`<option value="${q.id}">${esc(q.n)}</option>`).join('')}</select></label><label>On its<select id="jf">${FACES.map((x,i)=>`<option value="${i}">${x[0]}</option>`).join('')}</select></label><label>Joint<select id="jj">${JOINTS.map(j=>`<option>${j}</option>`).join('')}</select></label></div>
+ <div class="row"><button class="p" id="join"${o.length?'':' disabled'}>Join</button><button id="unj"${par?'':' disabled'}>Unjoin</button></div>
+ <p class="note" id="jst">${par?'Joined to '+esc(par.n)+' with '+p.joint.toLowerCase()+'.':'Not joined to anything.'}</p>`;
+ $('nm').value=p.n;$('shp').value=p.shape;$('col').value=p.color;
+ $('nm').oninput=e=>{p.n=e.target.value||'Piece';chips();cut()};
+ $('shp').onchange=e=>{p.shape=e.target.value;build();cut()};
+ $('col').oninput=e=>{p.color=e.target.value;build();chips();cut()};
+ const d=$('dims');
+ FIELDS.forEach(([k,l])=>{const lb=document.createElement('label'),i=document.createElement('input');lb.textContent=l;i.type='number';i.step='0.25';i.value=f(p[k]);
+  i.oninput=()=>{const v=parseFloat(i.value);if(isNaN(v))return;
+   if('xyz'.includes(k)&&k.length===1)moveBy(p,k==='x'?v-p.x:0,k==='y'?v-p.y:0,k==='z'?v-p.z:0);
+   else p[k]=['w','h','d'].includes(k)?Math.max(.1,v):v;
+   build();cut()};lb.appendChild(i);d.appendChild(lb)});
+ $('join').onclick=()=>joinTo(p,parts.find(q=>q.id==$('jt').value),+$('jf').value,$('jj').value);
+ $('unj').onclick=()=>{p.parent=null;ui()}}
+function cut(){
+ let h='<tr><th>Piece</th><th>Shape</th><th>W × H × D (in)</th><th>Price ($)</th></tr>';
+ parts.forEach((p,i)=>{h+=`<tr data-i="${i}" class="${i===sel?'on':''}"><td><span class="sw" style="background:${p.color}"></span>${esc(p.n)}</td><td>${p.shape}</td><td>${f(p.w)} × ${f(p.h)} × ${f(p.d)}</td><td><input type="number" class="pr" data-i="${i}" min="0" step="0.01" placeholder="0.00" value="${p.price||''}" aria-label="Price of ${esc(p.n)}"></td></tr>`});
+ $('cut').innerHTML=h;sum()}
+function sum(){const s=parts.reduce((a,p)=>a+(p.price||0),0),o=parseFloat($('oth').value)||0,$$=v=>'$'+v.toFixed(2);
+ const r=(a,b)=>`<div class="tot"><span>${a}</span><span>${b}</span></div>`;
+ $('sum').innerHTML=r(`Pieces (${parts.length})`,$$(s))+r('Other costs',$$(o))+`<div class="tot" style="border-top:1px solid var(--line);margin-top:6px;padding-top:8px"><span>Total</span><span class="big">${$$(s+o)}</span></div>`}
+$('cut').onclick=e=>{const tr=e.target.closest('tr[data-i]');if(tr&&e.target.tagName!=='INPUT'){sel=+tr.dataset.i;ui()}};
+$('cut').oninput=e=>{if(e.target.classList.contains('pr')){parts[+e.target.dataset.i].price=Math.max(0,parseFloat(e.target.value)||0);sum()}};
+$('oth').oninput=sum;
+function ui(){chips();form();build();cut()}
+$('preset').onchange=e=>{parts=PRESETS[e.target.value]();sel=0;ui();fit();place()};
+$('add').onclick=()=>{parts.push(mk('Piece '+(parts.length+1),$('newshape').value,8,8,8,0,0,0));sel=parts.length-1;ui()};
+$('dup').onclick=()=>{const p=parts[sel];if(!p)return;const c=Object.assign({},p,{id:uid++,n:p.n+' copy',x:p.x+3});parts.push(c);sel=parts.length-1;ui()};
+$('del').onclick=()=>{const p=parts[sel];if(!p)return;parts.forEach(q=>{if(q.parent===p.id)q.parent=p.parent});parts.splice(sel,1);sel=Math.max(0,sel-1);ui()};
+size();ui();fit();place();
+</script></body></html>
