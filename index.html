@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪑</text></svg>">
 <title>Bench Plan – Furniture Designer</title>
 <style>
 :root{--bg:#eef0ea;--card:#fbfbf8;--ink:#1c2620;--mute:#5d6b62;--line:#cfd5c9;--acc:#2d5f8b;--acc-ink:#fff;--stage:#dfe4da;--on:#e3ecf5;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -39,13 +40,15 @@ td input{width:90px;padding:4px 6px}
 .big{font:700 24px Georgia,serif;color:var(--acc)}
 .note{font-size:12px;color:var(--mute);margin:4px 0}
 .sw{display:inline-block;width:11px;height:11px;border-radius:3px;border:1px solid var(--line);margin-right:6px;vertical-align:-1px}
+.card.full{position:fixed;inset:0;z-index:50;margin:0!important;border-radius:0;display:flex;flex-direction:column;padding-top:calc(12px + env(safe-area-inset-top,0px));padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
+.card.full #stage{flex:1;height:auto;min-height:0}
 </style></head>
 <body><div class="wrap">
 <h1>Bench Plan</h1>
 <p class="sub">Build a piece from any shapes, join them together, colour them, and price each one.</p>
 <div class="grid">
  <div>
-  <div class="card"><div id="stage"><span class="hint">Tap a piece to select. Drag to rotate, pinch or scroll to zoom.</span></div></div>
+  <div class="card" id="view"><div class="row"><button id="mode">Drag pieces: along the floor</button><button id="fs">Full screen</button><button id="reset">Reset view</button></div><div id="stage"><span class="hint">Drag a piece to move it. Drag empty space to rotate. Pinch or scroll to zoom.</span></div></div>
   <div class="card" style="margin-top:14px">
    <h2>Cut list and prices</h2>
    <div class="tw"><table id="cut"></table></div>
@@ -55,12 +58,16 @@ td input{width:90px;padding:4px 6px}
  </div>
  <div>
   <div class="card">
-   <div class="row"><label style="flex:1">Start from<select id="preset"><option value="table">Dining table</option><option value="shelf">Bookshelf</option><option value="stool">Round stool</option><option value="blank">Blank</option></select></label></div>
-   <h2>Pieces</h2>
+   <div class="row"><label style="flex:1">Start from<select id="preset"><option value="table">Dining table</option><option value="shelf">Bookshelf</option><option value="stool">Round stool</option><option value="bed">Queen bed frame</option><option value="chair">Chair</option><option value="sofa">Sofa</option><option value="bench">Bench</option><option value="blank">Blank</option></select></label></div>
+   <h2>Measurements</h2>
+   <div class="two"><label>Units<select id="unit"><option value="1">Inches</option><option value="2.54">Centimetres</option><option value="25.4">Millimetres</option></select></label></div>
+   <div class="dims" id="overall"></div>
+   <p class="note">Change the overall size to resize the whole design. Every piece scales with it.</p>
+   <h2 style="margin-top:12px">Pieces</h2>
    <div class="chips" id="chips"></div>
    <div class="row"><select id="newshape" style="flex:1"></select><button class="p" id="add">Add piece</button><button id="dup">Duplicate</button><button id="del">Delete</button></div>
    <div id="form"></div>
-   <p class="note">Sizes are in inches. Position is the bottom centre of a piece, from the middle of the floor. Moving a piece also moves everything joined to it.</p>
+   <p class="note">Sizes use the unit chosen above. Position is the bottom centre of a piece, from the middle of the floor. Moving a piece also moves everything joined to it.</p>
   </div>
  </div>
 </div>
@@ -77,15 +84,15 @@ const SH={
  Sphere:()=>new T.SphereGeometry(.5,28,18),
  Cone:()=>new T.ConeGeometry(.5,1,32),
  Pyramid:()=>{const g=new T.ConeGeometry(.5*Math.SQRT2,1,4);g.rotateY(Math.PI/4);return g},
- Prism:()=>new T.CylinderGeometry(.58,.58,1,3),
- Hexagon:()=>new T.CylinderGeometry(.5,.5,1,6),
+ Prism:()=>{const g=new T.CylinderGeometry(.58,.58,1,3);g.translate(0,0,-.145);g.scale(1,1,1/.87);return g},
+ Hexagon:()=>{const g=new T.CylinderGeometry(.5,.5,1,6);g.scale(1/.866,1,1);return g},
  Dome:()=>{const g=new T.SphereGeometry(.5,28,12,0,Math.PI*2,0,Math.PI/2);g.translate(0,-.25,0);g.scale(1,2,1);return g},
  Torus:()=>{const g=new T.TorusGeometry(.35,.15,14,36);g.rotateX(Math.PI/2);g.scale(1,1/.3,1);return g}
 };
 const FACES=[['Top',1,1],['Bottom',1,-1],['Right side',0,1],['Left side',0,-1],['Front',2,1],['Back',2,-1]];
 const JOINTS=['Glue','Screws','Dowels','Mortise and tenon','Nails','Bolts'];
 $('newshape').innerHTML=Object.keys(SH).map(s=>`<option>${s}</option>`).join('');
-let uid=1,parts=[],sel=0,meshes=[];
+let uid=1,parts=[],sel=0,meshes=[],U=1;const UN={1:'in',2.54:'cm',25.4:'mm'};
 const mk=(n,shape,w,h,d,x,y,z,color)=>({id:uid++,n,shape,w,h,d,x,y,z,rx:0,ry:0,rz:0,color:color||'#c9a36b',price:0,parent:null,joint:'Glue'});
 const link=a=>{a.slice(1).forEach(p=>p.parent=a[0].id);return a};
 const OAK='#c9a36b',WAL='#6b4a33',PINE='#e0c68e',CHE='#a8603c';
@@ -94,6 +101,10 @@ const PRESETS={
   o.push(mk('Apron front','Box',48,4,.75,0,24.5,-12.6,OAK),mk('Apron back','Box',48,4,.75,0,24.5,12.6,OAK),mk('Apron left','Box',23,4,.75,-27.6,24.5,0,OAK),mk('Apron right','Box',23,4,.75,27.6,24.5,0,OAK));return link(o)},
  shelf:()=>{const o=[mk('Side left','Box',.75,60,11,-15.1,0,0,PINE),mk('Side right','Box',.75,60,11,15.1,0,0,PINE)];[0,19,38,59.25].forEach((y,i)=>o.push(mk('Shelf '+(i+1),'Box',29.5,.75,11,0,y,0,PINE)));o.push(mk('Back panel','Box',29.5,58,.25,0,1,-5.4,'#c9b48a'));return link(o)},
  stool:()=>{const o=[mk('Seat','Cylinder',15,1.5,15,0,23.5,0,CHE)];[[-4.5,-4.5],[4.5,-4.5],[-4.5,4.5],[4.5,4.5]].forEach((p,i)=>o.push(mk('Leg '+(i+1),'Cylinder',1.75,23.5,1.75,p[0],0,p[1],OAK)));o.push(mk('Foot ring','Torus',11,.75,11,0,8,0,WAL));return link(o)},
+ bed:()=>{const o=[mk('Headboard','Box',66,44,2,0,0,-41,CHE),mk('Side rail left','Box',2,7,80,-31,8,0,CHE),mk('Side rail right','Box',2,7,80,31,8,0,CHE),mk('Foot rail','Box',62,7,2,0,8,41,CHE)];[[-31,-37],[31,-37],[-31,38],[31,38]].forEach((p,i)=>o.push(mk('Leg '+(i+1),'Box',3,10,3,p[0],0,p[1],CHE)));for(let i=0;i<7;i++)o.push(mk('Slat '+(i+1),'Box',62,.75,3.5,0,15,-30+i*10,PINE));o.push(mk('Mattress','Box',60,10,80,0,15.75,0,'#e8e4da'));return link(o)},
+ chair:()=>{const o=[mk('Seat','Box',18,1.5,18,0,17,0,OAK)];[[-7.5,-7.5],[7.5,-7.5],[-7.5,7.5],[7.5,7.5]].forEach((p,i)=>o.push(mk('Leg '+(i+1),'Box',1.75,17,1.75,p[0],0,p[1],OAK)));o.push(mk('Back post left','Box',1.75,17,1.75,-7.5,18.5,-7.5,OAK),mk('Back post right','Box',1.75,17,1.75,7.5,18.5,-7.5,OAK),mk('Back top rail','Box',18,3,1.5,0,32.5,-7.5,OAK),mk('Back slat','Box',13,3,.75,0,25,-7.5,OAK),mk('Stretcher left','Box',.75,1.25,15,-7.5,6,0,OAK),mk('Stretcher right','Box',.75,1.25,15,7.5,6,0,OAK));return link(o)},
+ sofa:()=>{const o=[mk('Base','Box',80,10,34,0,6,0,'#4a5a6a')];[[-36,-14],[36,-14],[-36,14],[36,14]].forEach((p,i)=>o.push(mk('Foot '+(i+1),'Cylinder',3,6,3,p[0],0,p[1],WAL)));o.push(mk('Arm left','Box',8,16,34,-44,6,0,'#4a5a6a'),mk('Arm right','Box',8,16,34,44,6,0,'#4a5a6a'),mk('Seat cushion left','Box',38,6,24,-19.5,16,4,'#6c7f93'),mk('Seat cushion right','Box',38,6,24,19.5,16,4,'#6c7f93'),mk('Back cushion left','Box',38,18,8,-19.5,16,-13,'#6c7f93'),mk('Back cushion right','Box',38,18,8,19.5,16,-13,'#6c7f93'));return link(o)},
+ bench:()=>{const o=[mk('Top','Box',48,1.5,14,0,17.5,0,PINE),mk('Leg left','Box',2,17.5,12,-19,0,0,OAK),mk('Leg right','Box',2,17.5,12,19,0,0,OAK),mk('Stretcher','Box',36,3.5,1,0,11,0,OAK)];return link(o)},
  blank:()=>[mk('Piece 1','Box',24,.75,12,0,0,0)]
 };
 parts=PRESETS.table();
@@ -109,27 +120,34 @@ let az=.7,el=.45,dist=120,tgt=new T.Vector3(0,15,0);
 function place(){cam.position.set(tgt.x+dist*Math.cos(el)*Math.sin(az),tgt.y+dist*Math.sin(el),tgt.z+dist*Math.cos(el)*Math.cos(az));cam.lookAt(tgt);R.render(S,cam)}
 function fit(){const b=new T.Box3().setFromObject(G);if(b.isEmpty())return;const s=b.getSize(new T.Vector3());tgt.copy(b.getCenter(new T.Vector3()));dist=Math.max(s.x,s.y,s.z)*2.1+10}
 function build(){
- while(G.children.length){const m=G.children.pop();m.geometry.dispose()}
+ while(G.children.length){const m=G.children.pop();m.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose()})}
  meshes=parts.map((p,i)=>{const g=SH[p.shape]();
   const m=new T.Mesh(g,new T.MeshLambertMaterial({color:p.color,emissive:i===sel?0x1c3a5c:0x000000}));
   m.scale.set(p.w,p.h,p.d);m.position.set(p.x,p.y+p.h/2,p.z);
   m.rotation.set(p.rx*Math.PI/180,p.ry*Math.PI/180,p.rz*Math.PI/180);
   m.add(new T.LineSegments(new T.EdgesGeometry(g,25),new T.LineBasicMaterial({color:i===sel?0x4da3ff:0x2a1d12})));
   m.userData.i=i;G.add(m);return m});
- place()}
+ overall();place()}
 function size(){const r=stage.getBoundingClientRect();R.setSize(r.width,r.height);cam.aspect=r.width/r.height;cam.updateProjectionMatrix();place()}
 addEventListener('resize',size);
-const ptr=new Map(),rc=new T.Raycaster();let last=0,moved=0;
+const ptr=new Map(),rc=new T.Raycaster();let last=0,moved=0,drag=null,mode='f';
+$('mode').onclick=()=>{mode=mode==='f'?'h':'f';$('mode').textContent=mode==='f'?'Drag pieces: along the floor':'Drag pieces: up and down'};
+function ray(e,pl){const r=stage.getBoundingClientRect();rc.setFromCamera(new T.Vector2((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1),cam);const v=new T.Vector3();return rc.ray.intersectPlane(pl,v)?v:null}
+function hit(e){const r=stage.getBoundingClientRect();rc.setFromCamera(new T.Vector2((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1),cam);const h=rc.intersectObjects(G.children)[0];return h?h.object.userData.i:null}
+function dragMove(e){const p=parts[drag.i],q=ray(e,drag.pl);if(!q||!drag.last){drag.last=q;return}const d=q.clone().sub(drag.last);drag.last=q;if(mode==='h')moveBy(p,0,d.y,0);else moveBy(p,d.x,0,d.z);build()}
 const pd=()=>{const a=[...ptr.values()];return Math.hypot(a[0][0]-a[1][0],a[0][1]-a[1][1])||1};
-stage.addEventListener('pointerdown',e=>{stage.setPointerCapture(e.pointerId);ptr.set(e.pointerId,[e.clientX,e.clientY]);moved=0;if(ptr.size==2)last=pd()});
+stage.addEventListener('pointerdown',e=>{stage.setPointerCapture(e.pointerId);ptr.set(e.pointerId,[e.clientX,e.clientY]);moved=0;drag=null;
+ if(ptr.size==2){last=pd();return}
+ const h=hit(e);if(h!=null){if(sel!==h){sel=h;ui()}const p=parts[h],c=new T.Vector3(p.x,p.y+p.h/2,p.z),n=mode==='h'?new T.Vector3(Math.sin(az),0,Math.cos(az)):new T.Vector3(0,1,0),pl=new T.Plane().setFromNormalAndCoplanarPoint(n,c);drag={i:h,pl,last:ray(e,pl)}}});
 stage.addEventListener('pointermove',e=>{if(!ptr.has(e.pointerId))return;const o=ptr.get(e.pointerId);
- if(ptr.size==1){moved+=Math.abs(e.clientX-o[0])+Math.abs(e.clientY-o[1]);az-=(e.clientX-o[0])*.008;el=Math.max(.05,Math.min(1.5,el+(e.clientY-o[1])*.008))}
+ if(drag&&ptr.size==1){moved+=Math.abs(e.clientX-o[0])+Math.abs(e.clientY-o[1]);dragMove(e)}
+ else if(ptr.size==1){moved+=Math.abs(e.clientX-o[0])+Math.abs(e.clientY-o[1]);az-=(e.clientX-o[0])*.008;el=Math.max(.05,Math.min(1.5,el+(e.clientY-o[1])*.008))}
  ptr.set(e.pointerId,[e.clientX,e.clientY]);
  if(ptr.size==2){const d=pd();dist=Math.max(15,Math.min(600,dist*last/d));last=d}place()});
-stage.addEventListener('pointerup',e=>{if(ptr.size===1&&moved<6){const r=stage.getBoundingClientRect();
+stage.addEventListener('pointerup',e=>{if(drag){const was=moved>=6;drag=null;if(was){ptr.delete(e.pointerId);ui();return}}if(ptr.size===1&&moved<6){const r=stage.getBoundingClientRect();
   rc.setFromCamera(new T.Vector2((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1),cam);
   const h=rc.intersectObjects(G.children)[0];if(h){sel=h.object.userData.i;ui()}}ptr.delete(e.pointerId)});
-stage.addEventListener('pointercancel',e=>ptr.delete(e.pointerId));
+stage.addEventListener('pointercancel',e=>{ptr.delete(e.pointerId);drag=null});
 stage.addEventListener('wheel',e=>{e.preventDefault();dist=Math.max(15,Math.min(600,dist*(1+e.deltaY*.001)));place()},{passive:false});
 
 // ---- joining ----
@@ -158,16 +176,16 @@ function form(){const p=parts[sel],el=$('form');if(!p){el.innerHTML='<p class="n
  $('shp').onchange=e=>{p.shape=e.target.value;build();cut()};
  $('col').oninput=e=>{p.color=e.target.value;build();chips();cut()};
  const d=$('dims');
- FIELDS.forEach(([k,l])=>{const lb=document.createElement('label'),i=document.createElement('input');lb.textContent=l;i.type='number';i.step='0.25';i.value=f(p[k]);
-  i.oninput=()=>{const v=parseFloat(i.value);if(isNaN(v))return;
+ FIELDS.forEach(([k,l])=>{const lb=document.createElement('label'),i=document.createElement('input');lb.textContent=l;i.type='number';i.step='any';i.value=f(k[0]==='r'?p[k]:p[k]*U);
+  i.oninput=()=>{let v=parseFloat(i.value);if(isNaN(v))return;if(k[0]!=='r')v/=U;
    if('xyz'.includes(k)&&k.length===1)moveBy(p,k==='x'?v-p.x:0,k==='y'?v-p.y:0,k==='z'?v-p.z:0);
    else p[k]=['w','h','d'].includes(k)?Math.max(.1,v):v;
    build();cut()};lb.appendChild(i);d.appendChild(lb)});
  $('join').onclick=()=>joinTo(p,parts.find(q=>q.id==$('jt').value),+$('jf').value,$('jj').value);
  $('unj').onclick=()=>{p.parent=null;ui()}}
 function cut(){
- let h='<tr><th>Piece</th><th>Shape</th><th>W × H × D (in)</th><th>Price ($)</th></tr>';
- parts.forEach((p,i)=>{h+=`<tr data-i="${i}" class="${i===sel?'on':''}"><td><span class="sw" style="background:${p.color}"></span>${esc(p.n)}</td><td>${p.shape}</td><td>${f(p.w)} × ${f(p.h)} × ${f(p.d)}</td><td><input type="number" class="pr" data-i="${i}" min="0" step="0.01" placeholder="0.00" value="${p.price||''}" aria-label="Price of ${esc(p.n)}"></td></tr>`});
+ let h='<tr><th>Piece</th><th>Shape</th><th>W × H × D ('+UN[U]+')</th><th>Price ($)</th></tr>';
+ parts.forEach((p,i)=>{h+=`<tr data-i="${i}" class="${i===sel?'on':''}"><td><span class="sw" style="background:${p.color}"></span>${esc(p.n)}</td><td>${p.shape}</td><td>${f(p.w*U)} × ${f(p.h*U)} × ${f(p.d*U)}</td><td><input type="number" class="pr" data-i="${i}" min="0" step="0.01" placeholder="0.00" value="${p.price||''}" aria-label="Price of ${esc(p.n)}"></td></tr>`});
  $('cut').innerHTML=h;sum()}
 function sum(){const s=parts.reduce((a,p)=>a+(p.price||0),0),o=parseFloat($('oth').value)||0,$$=v=>'$'+v.toFixed(2);
  const r=(a,b)=>`<div class="tot"><span>${a}</span><span>${b}</span></div>`;
@@ -180,5 +198,19 @@ $('preset').onchange=e=>{parts=PRESETS[e.target.value]();sel=0;ui();fit();place(
 $('add').onclick=()=>{parts.push(mk('Piece '+(parts.length+1),$('newshape').value,8,8,8,0,0,0));sel=parts.length-1;ui()};
 $('dup').onclick=()=>{const p=parts[sel];if(!p)return;const c=Object.assign({},p,{id:uid++,n:p.n+' copy',x:p.x+3});parts.push(c);sel=parts.length-1;ui()};
 $('del').onclick=()=>{const p=parts[sel];if(!p)return;parts.forEach(q=>{if(q.parent===p.id)q.parent=p.parent});parts.splice(sel,1);sel=Math.max(0,sel-1);ui()};
+function overall(){const b=new T.Box3().setFromObject(G),s=b.getSize(new T.Vector3()),host=$('overall');host.innerHTML='';
+ [['Overall width',0],['Overall height',1],['Overall depth',2]].forEach(([l,i])=>{const lb=document.createElement('label'),inp=document.createElement('input'),k='xyz'[i];
+  lb.textContent=l;inp.type='number';inp.step='any';inp.min='0.1';inp.value=f(s[k]*U);
+  inp.onchange=()=>{const v=parseFloat(inp.value)/U;if(!(v>0)||!(s[k]>0))return;const r=v/s[k],a=['w','h','d'][i];parts.forEach(p=>{p[a]*=r;p[k]*=r});ui()};
+  lb.appendChild(inp);host.appendChild(lb)})}
+$('unit').onchange=e=>{U=parseFloat(e.target.value);ui()};
+const view=$('view');let fsOn=false;
+function setFull(on){fsOn=on;view.classList.toggle('full',on);document.body.style.overflow=on?'hidden':'';$('fs').textContent=on?'Exit full screen':'Full screen';setTimeout(()=>{size();place()},60)}
+$('fs').onclick=()=>{
+ if(!fsOn){setFull(true);if(view.requestFullscreen)view.requestFullscreen().catch(()=>{})}
+ else{if(document.fullscreenElement&&document.exitFullscreen)document.exitFullscreen().catch(()=>{});setFull(false)}};
+document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement&&fsOn)setFull(false)});
+addEventListener('keydown',e=>{if(e.key==='Escape'&&fsOn&&!document.fullscreenElement)setFull(false)});
+$('reset').onclick=()=>{az=.7;el=.45;fit();place()};
 size();ui();fit();place();
 </script></body></html>
